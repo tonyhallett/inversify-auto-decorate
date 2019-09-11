@@ -1,0 +1,23 @@
+{
+  "name": "inversify_auto_decorate",
+  "version": "1.0.0",
+  "description": "Auto decorate by service identifier",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "testSpecific": "jest --runTestsByPath __tests__/decoratedContainer.test.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^12.7.4",
+    "inversify": "^5.0.1",
+    "ts-jest": "^24.0.2"
+  },
+  "devDependencies": {
+    "@types/jest": "^24.0.18",
+    "jest": "^24.9.0",
+    "reflect-metadata": "^0.1.13",
+    "typescript": "^3.6.2"
+  }
+}
