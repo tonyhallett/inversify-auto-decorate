@@ -7,20 +7,20 @@ import { DecoratingContainerModule } from "./DecoratingContainerModule";
 import { BindingDecorator } from "../decorator/bindingDecorator/bindingDecorator";
 
 
-//if only for modules should export factory function that return this type
-export interface IDecoratingModuleContainer{
-    load:interfaces.Container["load"];
-    unload:interfaces.Container["unload"]
-    //to do - need gets - better to exclude
-}
 export class DecoratingModuleContainer extends Container{
-    //just for testing
+    private decorator:IDecorator;
+    private decoratingInterceptingContainerModuleFactory:IDecoratingInterceptingContainerModuleFactory;
     constructor(
-        private readonly decorator:IDecorator,
-        private decoratingInterceptingContainerModuleFactory:IDecoratingInterceptingContainerModuleFactory,
-        lastDecoratorConstructedFirst:boolean
+        lastDecoratorConstructedFirst=true,
+        options?:interfaces.ContainerOptions,
         ){
-        super();
+        super(options);
+        this.decorator=new Decorator(
+            new ModuleFluentProxyFactory(), 
+            new UndecoratedBinder(),
+            new BindingDecorator()
+        ),
+        this.decoratingInterceptingContainerModuleFactory=new DecoratingInterceptingContainerModuleFactory(),
         this.decorator.setLastDecoratorConstructedFirst(lastDecoratorConstructedFirst);
         
     }
@@ -32,17 +32,6 @@ export class DecoratingModuleContainer extends Container{
         super.unload(...modules as interfaces.ContainerModule[]);
         this.decorator.unload(modules.map(m=>m.id));
     }
-}
-export function createDecoratingModuleContainer(lastDecoratorConstructedFirst:boolean=true):DecoratingModuleContainer{
-    return new DecoratingModuleContainer(
-        new Decorator(
-            new ModuleFluentProxyFactory(), 
-            new UndecoratedBinder(),
-            new BindingDecorator()
-        ),
-        new DecoratingInterceptingContainerModuleFactory(),
-        lastDecoratorConstructedFirst
-        );
 }
 
 

@@ -1,8 +1,8 @@
 import "reflect-metadata";
 import { injectable, inject, named, interfaces, ContainerModule } from 'inversify'
-import { createDecoratingModuleContainer } from "../DecoratingProxyContainer/container_modules/container";
 import { OneShotDecoratingContainerModule } from "../DecoratingProxyContainer/container_modules/DecoratingContainerModule";
 import { isUndefined } from "util";
+import { DecoratingModuleContainer } from "../DecoratingProxyContainer/container_modules/container";
 describe('Decorating Container using Proxy', () => {
     beforeEach(()=>{
         FileStream.instanceId=0;
@@ -112,7 +112,7 @@ describe('Decorating Container using Proxy', () => {
     describe("normal operation without decoration", ()=>{
         
         it("Should bind normally without decoration", ()=>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
+            const decoratingContainerModule = new DecoratingModuleContainer();
             const oneShot=new OneShotDecoratingContainerModule((bind)=>{
                 bind("IStream").to(FileStream);
             })
@@ -120,7 +120,7 @@ describe('Decorating Container using Proxy', () => {
             expect(decoratingContainerModule.get("IStream")).toBeInstanceOf(FileStream);
         });
         it("Should work with onActivation without decoration", () =>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
+            const decoratingContainerModule =  new DecoratingModuleContainer();
             let onActivationCalled = false;
             const oneShot=new OneShotDecoratingContainerModule((bind)=>{
                 bind("IStream").to(FileStream).onActivation((context,fs)=>{
@@ -135,7 +135,7 @@ describe('Decorating Container using Proxy', () => {
         })
         describe("scope",()=>{
             it("should work normally with singleton scope",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 let onSingletonActivationCount=0;
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream).inSingletonScope().onActivation((c,fs)=>{
@@ -150,7 +150,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(onSingletonActivationCount).toBe(1);
             })
             it("should work normally with transient scope",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 let onTransientActivationCount=0;
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream).inTransientScope().onActivation((c,fs)=>{
@@ -165,7 +165,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(onTransientActivationCount).toBe(2);
             })
             it("Should work normally with request scope", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream).inRequestScope();
                     bind(RequestScopeWithStream).toSelf();
@@ -184,7 +184,7 @@ describe('Decorating Container using Proxy', () => {
         
         
         it("Should report isBound correctly after load", ()=>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
+            const decoratingContainerModule =  new DecoratingModuleContainer();
             const oneShot=new OneShotDecoratingContainerModule((bind)=>{
                 bind("IStream").to(FileStream);
             })
@@ -192,7 +192,7 @@ describe('Decorating Container using Proxy', () => {
             expect(oneShot.isBound("IStream")).toBe(true);
         })
         it("Should bind named normally without decoration", () =>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
+            const decoratingContainerModule =  new DecoratingModuleContainer();
             const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                 bind(WithFileStream).toSelf();
                 bind(WithMemoryStream).toSelf();
@@ -206,7 +206,7 @@ describe('Decorating Container using Proxy', () => {
             expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("MemoryStream")
         })
         it("should unload normally",()=>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
+            const decoratingContainerModule =  new DecoratingModuleContainer();
             const keepModule=new OneShotDecoratingContainerModule((bind)=>{
                 bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
             })
@@ -221,7 +221,7 @@ describe('Decorating Container using Proxy', () => {
         })
         describe("should unbind normally",()=>{
             it("should unbind service identifier",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
                     bind("IStream").to(FileStream).whenTargetNamed("File");
@@ -233,7 +233,7 @@ describe('Decorating Container using Proxy', () => {
                 expectNoMatchingBindings(()=>decoratingContainerModule.getNamed("IStream","Memory"));
             })
             it("should unbind and re bind successfully",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(MemoryStream);
                 })
@@ -248,7 +248,7 @@ describe('Decorating Container using Proxy', () => {
             })
         })
         it("should rebind normally",()=>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
+            const decoratingContainerModule =  new DecoratingModuleContainer();
                 const rebindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
                 })
@@ -260,7 +260,7 @@ describe('Decorating Container using Proxy', () => {
     describe("decoration",()=>{
         describe("single decorator", ()=>{
             it("should permit additional decorator parameter injections", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const bindModule=new ContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
                 })
@@ -274,7 +274,7 @@ describe('Decorating Container using Proxy', () => {
 
             
             it("should permit additional decorator parameter injections - different parameter order", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const bindModule=new ContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
                 })
@@ -286,7 +286,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg](FileStream)");
             })
             it("should permit decorator property injection",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const bindModule=new ContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
                 })
@@ -299,7 +299,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg]WithProperty[123](FileStream)");
             })
             it("should decorate in 2 loads", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
                 })
@@ -315,7 +315,7 @@ describe('Decorating Container using Proxy', () => {
         })
         describe("Multiple decorators", ()=>{
             it("Should multiple decorate in single load - last decorator first", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer(true);
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
                 })
@@ -331,7 +331,7 @@ describe('Decorating Container using Proxy', () => {
             });
             
             it("Should multiple decorate in single load - first decorator first", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer(false);
+                const decoratingContainerModule =  new DecoratingModuleContainer(false);
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
                 })
@@ -346,7 +346,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg](Encrypted(FileStream))")
             })
             it("should multi decorate in 2 loads", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer(false);
+                const decoratingContainerModule =  new DecoratingModuleContainer(false);
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
                 })
@@ -364,7 +364,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg](Encrypted(FileStream))")
             })
             it("should return resolved singleton - no affect loading additional decorator after resolve", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer(false);
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream).inSingletonScope();
                 })
@@ -385,7 +385,7 @@ describe('Decorating Container using Proxy', () => {
         
         describe("decorating multiple roots", ()=>{
             it("Works with named root in one load", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =   new DecoratingModuleContainer();
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind(WithFileStream).toSelf();
                     bind(WithMemoryStream).toSelf();
@@ -402,7 +402,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("StreamWithArgument[The Arg](MemoryStream)")
             })
             it("Works with named root in two loads", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule = new DecoratingModuleContainer();
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind(WithFileStream).toSelf();
                     bind(WithMemoryStream).toSelf();
@@ -424,7 +424,7 @@ describe('Decorating Container using Proxy', () => {
         describe("unloading/unbinding",()=>{
             describe("unloading decorators", ()=>{
                 it("Should support unloading all decorators", () => {
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule =  new DecoratingModuleContainer();
                     const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind(WithFileStream).toSelf();
                         bind(WithMemoryStream).toSelf();
@@ -447,7 +447,7 @@ describe('Decorating Container using Proxy', () => {
                     expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("MemoryStream")
                 })
                 it("Should support unloading all decorators and reloading - SINGLETON RETAINED", () => {
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule =  new DecoratingModuleContainer();
                     const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind(WithFileStream).toSelf();
                         bind(WithMemoryStream).toSelf();
@@ -477,7 +477,7 @@ describe('Decorating Container using Proxy', () => {
                     expect(reloadDecoratedSingletonFileStream).toBe(decoratedSingletonFileStream);
                 })
                 it("Should support unloading one decorator - SINGLETON DECORATOR RETAINED", () => {
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule =  new DecoratingModuleContainer();
                     const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind(WithFileStream).toSelf();
                         bind(WithMemoryStream).toSelf();
@@ -500,7 +500,7 @@ describe('Decorating Container using Proxy', () => {
                     expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(MemoryStream)");
                 });
                 it("Should support unloading one decorator and reloading", () => {
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule =  new DecoratingModuleContainer();
                     const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind(WithFileStream).toSelf();
                         bind(WithMemoryStream).toSelf();
@@ -533,7 +533,7 @@ describe('Decorating Container using Proxy', () => {
             })
             describe("unloading the bind module",()=>{
                 it("should throw if try to get after as normal",()=>{
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule =  new DecoratingModuleContainer();
                     const keepBindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind(WithFileStream).toSelf();
                         bind(WithMemoryStream).toSelf();
@@ -555,7 +555,7 @@ describe('Decorating Container using Proxy', () => {
                     expectNoMatchingBindings(()=>decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream));
                 })
                 it("should be possible to unload and load another bind module to apply decorators to",()=>{
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule = new DecoratingModuleContainer();
                     
                     const keepBindModule = new OneShotDecoratingContainerModule((bind)=>{
                         bind(WithStream).toSelf();
@@ -576,7 +576,7 @@ describe('Decorating Container using Proxy', () => {
                     expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(FileStream)")
                 })
                 it("should be possible to unload and reload the same module",()=>{
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule = new DecoratingModuleContainer();
                     
                     const bindAndDecorate = new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
                         bind(WithStream).toSelf();
@@ -594,7 +594,7 @@ describe('Decorating Container using Proxy', () => {
             describe("unbind/rebind", ()=>{
                 describe("unbind",()=>{
                     it("should unbind service identifier and keep decorators",()=>{
-                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const decoratingContainerModule =  new DecoratingModuleContainer();
                         const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
                             bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
                             bind("IStream").to(FileStream).whenTargetNamed("File");
@@ -611,7 +611,7 @@ describe('Decorating Container using Proxy', () => {
                         expectNoMatchingBindings(()=>decoratingContainerModule.getNamed("IStream","Memory"));
                     })
                     it("should unbind and re bind successfully",()=>{
-                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const decoratingContainerModule =  new DecoratingModuleContainer();
                         const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
                             bind("IStream").to(MemoryStream)
                         })
@@ -625,7 +625,7 @@ describe('Decorating Container using Proxy', () => {
                         expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Compressed(FileStream)");
                     })
                     it("should unbind and re bind successfully 2",()=>{
-                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const decoratingContainerModule = new DecoratingModuleContainer();
                         const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
                             bind("IStream").to(MemoryStream)
                         })
@@ -641,7 +641,7 @@ describe('Decorating Container using Proxy', () => {
                         expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Compressed(FileStream)");
                     })
                     it("should unbind and not affect other bindings", () => {
-                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const decoratingContainerModule = new DecoratingModuleContainer();
                         const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
                             bind("IKeepStream").to(FileStream);
                             bind("IStream").to(MemoryStream);
@@ -656,7 +656,7 @@ describe('Decorating Container using Proxy', () => {
                     })
                 })
                 it("should rebind successfully",()=>{
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule = new DecoratingModuleContainer();
                         const rebindModule=new OneShotDecoratingContainerModule((bind)=>{
                             bind("IStream").to(MemoryStream)
                         })
@@ -675,7 +675,7 @@ describe('Decorating Container using Proxy', () => {
         describe("respecting normal behaviour", ()=>{
             //may decide to have container option so that applied to decorator instead
             it("Should support onActivation when decorated", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule = new DecoratingModuleContainer();
                 let onActivationCalled = false;
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream).onActivation((context, fs)=>{
@@ -691,7 +691,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(onActivationCalled).toBe(true);
             })
             it("Should report isBound correctly when decorated", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule = new DecoratingModuleContainer();
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
                 })
@@ -704,7 +704,7 @@ describe('Decorating Container using Proxy', () => {
             })
             describe("scope", ()=>{
                 it("Should respect request scope on the root", ()=>{
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule = new DecoratingModuleContainer();
                     const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind("IStream").to(FileStream).inRequestScope();
                         bind(RequestScopeWithStream).toSelf();
@@ -722,7 +722,7 @@ describe('Decorating Container using Proxy', () => {
                 
                 })
                 it("Should respect singleton scope on the root", ()=>{
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule = new DecoratingModuleContainer();
                     let onSingletonActivationCount=0;
                     const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind("IStream").to(FileStream).inSingletonScope().onActivation((c,fs)=>{
@@ -743,7 +743,7 @@ describe('Decorating Container using Proxy', () => {
                 })
                 
                 it("Should respect singleton scope when container get before decoration", ()=>{
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule = new DecoratingModuleContainer();
                     let onSingletonActivationCount=0;
                     const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind("IStream").to(FileStream).inSingletonScope().onActivation((c,fs)=>{
@@ -763,7 +763,7 @@ describe('Decorating Container using Proxy', () => {
                 })
                   
                 it("should respect transient scope on the root", ()=>{
-                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const decoratingContainerModule = new DecoratingModuleContainer();
                     let onTransientActivationCount=0;
                     const bindModule2=new OneShotDecoratingContainerModule((bind)=>{
                         bind("IStream").to(FileStream).inTransientScope().onActivation((c,fs)=>{
@@ -782,7 +782,7 @@ describe('Decorating Container using Proxy', () => {
                 })
                 describe("decorator scope", ()=>{
                     it("should work with singleton scope",()=>{
-                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const decoratingContainerModule = new DecoratingModuleContainer();
                         const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                             bind("IStream").to(FileStream).inSingletonScope();
                         })
@@ -795,7 +795,7 @@ describe('Decorating Container using Proxy', () => {
                     })
 
                     it("should work with transient scope",()=>{
-                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const decoratingContainerModule = new DecoratingModuleContainer();
                         const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                             bind("IStream").to(FileStream).inTransientScope();
                         })
@@ -807,7 +807,7 @@ describe('Decorating Container using Proxy', () => {
                         expect(decoratingContainerModule.get("IStream")).not.toBe(decoratingContainerModule.get("IStream"));
                     })
                     it("should work with request scope",()=>{
-                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const decoratingContainerModule = new DecoratingModuleContainer();
                         const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                             bind("IStream").to(FileStream).inRequestScope();
                             bind(RequestScopeWithStream).toSelf();
@@ -828,7 +828,7 @@ describe('Decorating Container using Proxy', () => {
         })
         
         it("Should report decoratorCount", ()=>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
+            const decoratingContainerModule = new DecoratingModuleContainer();
             const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                 bind("IStream").to(FileStream);
             })
@@ -845,7 +845,7 @@ describe('Decorating Container using Proxy', () => {
         })
         
         it("should decorate when load decorator module before decorated module",()=>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
+            const decoratingContainerModule = new DecoratingModuleContainer();
             const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                 bind(WithStream).toSelf();
                 bind("IStream").to(FileStream);
@@ -860,7 +860,7 @@ describe('Decorating Container using Proxy', () => {
         })
         describe("re syntaxing",()=>{
             it("should work when to is changed",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule = new DecoratingModuleContainer();
                 let to!:interfaces.BindingToSyntax<any>
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     to=bind("IStream");
@@ -876,7 +876,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Encrypted(MemoryStream)");
             })
             it("should work when onActivation is changed", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 let on!:interfaces.BindingOnSyntax<any>
                 let originalOnActivationCalled=false;
                 let newOnActivationCalled=false;
@@ -899,7 +899,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(newOnActivationCalled).toEqual(true);
             })
             it("should work when when is changed",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 let when!:interfaces.BindingWhenSyntax<any>
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                     when=bind("IStream").to(FileStream);
@@ -916,7 +916,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(decoratingContainerModule.get(WithMemoryStream).readStream()).toEqual("Encrypted(FileStream)");
             })
             it("should work when scope is changed", ()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
+                const decoratingContainerModule =  new DecoratingModuleContainer();
                 let inSyntax!:interfaces.BindingInSyntax<any>;
                 
                 const bindModule=new OneShotDecoratingContainerModule((bind)=>{
