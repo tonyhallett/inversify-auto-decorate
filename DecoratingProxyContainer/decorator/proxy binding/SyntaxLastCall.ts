@@ -18,17 +18,21 @@ type MappedFluentStage={
     in:interfaces.BindingInSyntax<any>
 }
 export type IFluentSyntaxCall<T extends SyntaxLastCallType>=IFluentCall<SyntaxLastCallTypeToFluentMethod<T>>
+
+export type SyntaxLastCallInterceptor<T extends SyntaxLastCallType>=(interceptedCall: IFluentSyntaxCall<T>) => boolean;
 export interface ISyntaxLastCall<T extends SyntaxLastCallType>{
-    intercept(interceptor: (interceptedCall: IFluentCall<SyntaxLastCallTypeToFluentMethod<T>>) => void):void
+    intercept(interceptor: SyntaxLastCallInterceptor<T>):void
     fluentStage:MappedFluentStage[T]
     type:T,
     lastCall:IFluentSyntaxCall<T>|undefined
     canApply(fluentCall:IFluentCall<any>):boolean
     apply(fluentCall:IFluentSyntaxCall<T>):FluentStage|undefined
 }
+
+
 export class SyntaxLastCall<T extends SyntaxLastCallType> implements ISyntaxLastCall<T> {
-    private interceptor: ((interceptedCall: IFluentSyntaxCall<T>) => void)|undefined;
-    intercept(interceptor: (interceptedCall: IFluentSyntaxCall<T>) => void) {
+    private interceptor: SyntaxLastCallInterceptor<T>|undefined;
+    intercept(interceptor: SyntaxLastCallInterceptor<T>) {
         this.interceptor=interceptor;
     }
     lastCall: IFluentSyntaxCall<T> | undefined;
@@ -37,10 +41,9 @@ export class SyntaxLastCall<T extends SyntaxLastCallType> implements ISyntaxLast
     }
     apply(fluentCall: IFluentSyntaxCall<T>): FluentStage|undefined {
         if(this.interceptor){
-            this.interceptor(fluentCall);
-            return undefined;
+            const allowThrough = this.interceptor(fluentCall);
+            if(!allowThrough) return undefined;
         }
-        
         this.lastCall = fluentCall;
         const nextStage= (this.fluentStage as any)[fluentCall.method](...fluentCall.arguments);
         return nextStage;

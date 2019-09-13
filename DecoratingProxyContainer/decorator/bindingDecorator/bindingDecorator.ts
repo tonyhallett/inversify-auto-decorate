@@ -8,7 +8,7 @@ export interface IBindingDecorator{
     decoratedCount(serviceIdentifier: string | symbol | interfaces.Newable<any> | interfaces.Abstract<any>,isDecorating?:boolean): number;
     unload(moduleIds: number[]):void;
     lastDecoratorConstructedFirst: boolean;
-    decorateExisting(binding: IProxyBinding,newCall:IFluentCall<any>): boolean;
+    decorateExisting(binding: IProxyBinding): boolean;
     decorate(bindings: IProxyBinding[], decoratorModuleId: number, decorator: interfaces.Newable<any>, decoratorBindMethods:BindMethods):void
     addDecorator(decoratorModuleId:number,serviceIdentifier: interfaces.ServiceIdentifier<any>, decorator:interfaces.Newable<any>, decoratorBindMethods:BindMethods):void
     fluentCalled(serviceIdentifier:interfaces.ServiceIdentifier<any>, bindingId: number,call:IFluentCall<any>):void;
@@ -23,7 +23,7 @@ export class BindingDecorator implements IBindingDecorator{
         if(this.decoratedBindingsLookup.has(serviceIdentifier)){
             decoratedBindings = this.decoratedBindingsLookup.get(serviceIdentifier)!;
         }else{
-            decoratedBindings = new DecoratedBindingsManager(this.lastDecoratorConstructedFirst,serviceIdentifier);
+            decoratedBindings = new DecoratedBindingsManager(this.lastDecoratorConstructedFirst);
             this.decoratedBindingsLookup.set(serviceIdentifier,decoratedBindings);
         }
         return decoratedBindings;
@@ -37,9 +37,8 @@ export class BindingDecorator implements IBindingDecorator{
         }
     }
     //currently not decorating, returns true if has a decorator for service identifier
-    decorateExisting(binding: IProxyBinding,newCall:IFluentCall<any>): boolean {
+    decorateExisting(binding: IProxyBinding): boolean {
         if(this.decoratedBindingsLookup.has(binding.serviceIdentifier)){
-            binding.fluentCalled(newCall);
             const decoratedBindings = this.decoratedBindingsLookup.get(binding.serviceIdentifier)!;
             decoratedBindings.decorateExisting(binding);
             return true;
@@ -61,7 +60,6 @@ export class BindingDecorator implements IBindingDecorator{
        decoratedBindings.fluentCalled(bindingId,call);
     }
     
-    //todo remove DecoratedBinding/s after calling unbind on it
     unbind(serviceIdentifier: string | symbol | interfaces.Newable<any> | interfaces.Abstract<any>): void {
         if(this.decoratedBindingsLookup.has(serviceIdentifier)){
             const remove=this.decoratedBindingsLookup.get(serviceIdentifier)!.unbind();

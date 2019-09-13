@@ -1,106 +1,94 @@
-import { interfaces, getServiceIdentifierAsString } from "inversify";
+import { interfaces } from "inversify";
 import { IFluentCall } from "../../proxy binding/IFluentCall";
 import { BindMethods } from "../../BindMethods";
 import { IProxyBinding } from "../../proxy binding/ProxyBinding";
-import { BoundDecorators } from "./BoundDecorators";
-import { DecoratedBindings } from "./DecoratedBindings";
-import { RequestedBinding } from "./RequestedBinding";
-import { IBinder } from "./IBinder";
-import { IDecoratorNamer } from "./IDecoratorNamer";
-import { IConstrainedCallback } from "./IConstrainedCallback";
-export class DecoratedBindingsManager implements IDecoratorNamer, IBinder, IConstrainedCallback {
+import { DecoratedBinding, IDecoratedBinding } from "./DecoratedBinding";
+
+
+export interface IDecoratorDetail{
+    decoratorModuleId: number, 
+    decorator: interfaces.Newable<any>, 
+    decoratorBindMethods: BindMethods
+}
+
+
+export class DecoratedBindingsManager {
+    private decoratorDetails: IDecoratorDetail[] = [];
+    //key bindingId
+    private decoratedBindings:Map<number,IDecoratedBinding> = new Map();
     
-    private rootName = "Root";
-    private boundDecorators: BoundDecorators;
-    private decoratedBindings: DecoratedBindings;
-    private requestedBinding: RequestedBinding;
-    private serviceIdentifierAsString: string;
-    constructor(lastDecoratorConstructedFirst: boolean, serviceIdentifier: interfaces.ServiceIdentifier<any>) {
-        this.serviceIdentifierAsString = getServiceIdentifierAsString(serviceIdentifier);
-        this.requestedBinding = new RequestedBinding(serviceIdentifier, this.rootName, this);
-        this.decoratedBindings = new DecoratedBindings(this.serviceIdentifierAsString, this);
-        this.boundDecorators = new BoundDecorators(lastDecoratorConstructedFirst, serviceIdentifier, this.rootName, this);
-    }
-    private setDecoratorChain() {
-        if (!this.requestedBinding.createdRequestedBinding) {
-            this.requestedBinding.create();
+    constructor(
+        private lastDecoratorConstructedFirst: boolean, 
+       ) {}
+    private addDecoratorInOrder(decoratorModuleId: number, decorator: interfaces.Newable<any>, decoratorBindMethods: BindMethods) {
+        const newDecoratorDetail: IDecoratorDetail = {
+            decorator,
+            decoratorBindMethods,
+            decoratorModuleId
         }
-        this.boundDecorators.setDecoratorChain();
-    }
-    //#region interfaces methods
-    public getBind() {
-        let bind = this.boundDecorators.getBind();
-        if (!bind) {
-            bind = this.decoratedBindings.getBind();
+        if (this.lastDecoratorConstructedFirst) {
+            this.decoratorDetails = [newDecoratorDetail].concat(this.decoratorDetails);
         }
-        return bind!;
+        else {
+            this.decoratorDetails.push(newDecoratorDetail);
+        }
+        return newDecoratorDetail;
     }
-    public getDecoratorName(decoratorSuffix: number) {
-        return `${this.serviceIdentifierAsString}_${decoratorSuffix}`;
-    }
-    public getFirstDecorator = () => {
-        const firstDecoratorName = this.boundDecorators.decoratedCount() === 0 ? this.rootName : this.getDecoratorName(0);
-        return firstDecoratorName;
-    };
-    public constrainedCalled = (rootName: string) => {
-        this.requestedBinding.requestedRoot = rootName;
-    };
-    //#endregion
     //#region decorating
+    //#region fluent method called
+
+    //there are decorators to be applied
     decorateExisting(binding: IProxyBinding) {
-        this.decoratedBindings.create(binding);
-        this.setDecoratorChain();
+        this.createdDecoratedBinding(binding);
     }
+    private createdDecoratedBinding(binding: IProxyBinding){
+        this.decoratedBindings.set(binding.bindingId,new DecoratedBinding([...this.decoratorDetails],this.lastDecoratorConstructedFirst,this.decoratedBindings.size,binding));
+    }
+    fluentCalled(bindingId: number, call: IFluentCall<any>) {
+        this.decoratedBindings.get(bindingId)!.fluentCalled(call);
+    }
+    //#endregion
+    //#region due to decorate call ( this class is constructed first time for sid)
+
+    //these are those bindings that can decorate
     decorate(decorableBindings: IProxyBinding[], decoratorModuleId: number, decorator: interfaces.Newable<any>, decoratorBindMethods: BindMethods): void {
-        this.boundDecorators.addDecorator(decoratorModuleId, decorator, decoratorBindMethods);
-        decorableBindings.forEach(b => this.decoratedBindings.create(b));
-        this.setDecoratorChain();
+        this.addDecorator(decoratorModuleId,decorator,decoratorBindMethods)
+        decorableBindings.forEach(db=>this.createdDecoratedBinding(db));
     }
     addDecorator(decoratorModuleId: number, decorator: interfaces.Newable<any>, decoratorBindMethods: BindMethods) {
-        this.boundDecorators.addDecorator(decoratorModuleId, decorator, decoratorBindMethods);
-        if (this.decoratedBindings.count() !== 0) {
-            this.setDecoratorChain();
+        const newDecoratorDetail = this.addDecoratorInOrder(decoratorModuleId, decorator, decoratorBindMethods);
+        //already decorating - chain needs to change
+        if(this.decoratedBindings.size>0){
+            this.decoratedBindings.forEach(db=>db.addDecorator(newDecoratorDetail));
         }
     }
-    decoratedCount(isDecorating:boolean) {
-        if(isDecorating&&this.decoratedBindings.count()===0){
-            return 0;
-        }
-        return this.boundDecorators.decoratedCount();
+    
+    //#endregion
+    decoratedCount(isDecorating:boolean): number {
+        return isDecorating&&this.decoratedBindings.size===0?0:this.decoratorDetails.length;
     }
     //#endregion
-    fluentCalled(bindingId: number, call: IFluentCall<any>) {
-        this.decoratedBindings.fluentCalled(bindingId, call);
-    }
+    
     unload(moduleIds: number[]):boolean {
-        let {unloadedBinds,noDecoratorsRemain} = this.boundDecorators.unload(moduleIds);
-        let {unloadedBinds:unloadedBindingBinds,noBindingsRemain } = this.decoratedBindings.unload(moduleIds);
+        this.decoratorDetails=this.decoratorDetails.filter(dd=>{
+            return !moduleIds.some(mid=>mid===dd.decoratorModuleId);
+        })
         
-        const remove:boolean=noDecoratorsRemain&&noBindingsRemain;
-        if(!remove){
-            unloadedBinds=unloadedBinds.concat(unloadedBindingBinds)
-            if (this.requestedBinding.createdRequestedBinding) {
-                if (unloadedBinds.find(b => this.requestedBinding.bind === b)) {
-                    this.resetRequestedBinding();
-                }
+        this.decoratedBindings.forEach((db,key)=>{
+            const remove = db.unload(moduleIds);
+            if(remove){
+                this.decoratedBindings.delete(key)
             }
-            this.setDecoratorChain();
-        }
-        
-
-        return remove;
+        });
+        const removeDecoratedBindingsManager = this.decoratedBindings.size===0&&this.decoratorDetails.length===0;
+        return removeDecoratedBindingsManager;
     }
-    private resetRequestedBinding(){
-        this.requestedBinding.createdRequestedBinding = false;
-        this.requestedBinding.bind = undefined;
-    }
+    
     unbind(): boolean {
-        this.decoratedBindings.unbind();
-        this.resetRequestedBinding();
-        this.boundDecorators.requiresRebind=true;
-        if(this.boundDecorators.decoratedCount()===0){
-            return true;
-        }
-        return false;
+        this.decoratedBindings.forEach((db)=>{
+            db.unbind();
+        })
+        this.decoratedBindings.clear();
+        return this.decoratorDetails.length === 0;
     }
 }

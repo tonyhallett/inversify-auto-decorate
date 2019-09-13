@@ -15,36 +15,39 @@ export interface IDecorator{
 
 
 export class Decorator implements IDecorator, IModuleFluentProxyCalled {
-    setLastDecoratorConstructedFirst(lastFirst:boolean){
-        this.bindingDecorator.lastDecoratorConstructedFirst=lastFirst;
-    }
+    
     constructor(
         private moduleFluentProxyFactory:IModuleFluentProxyFactory,
         private undecoratedBinder:IUndecoratedBinder,
         private bindingDecorator:IBindingDecorator
         ) { }
+    private decorated(decoratorModuleId:number,serviceIdentifier: interfaces.ServiceIdentifier<any>, decorator: interfaces.Newable<any>,decoratorBindMethods:BindMethods){
+        const decorableBindings=this.undecoratedBinder.getDecorableBindings(serviceIdentifier);
+        if(decorableBindings.length>0){
+            this.bindingDecorator.decorate(decorableBindings,decoratorModuleId,decorator,decoratorBindMethods);
+        }else{
+            this.bindingDecorator.addDecorator(decoratorModuleId, serviceIdentifier,decorator,decoratorBindMethods);
+        }
+    }
     called<T extends FluentMethods>(moduleId: number,serviceIdentifier:interfaces.ServiceIdentifier<any>, bindingId: number, method: T, args:FluentMethodParameters<T>) {
         const call:IFluentCall<T> = {method,arguments:args}
-        let useUndecoratedBinder = true;
         if(method!=="bind"){
             const binding = this.undecoratedBinder.getBinding(moduleId, bindingId);
             if(binding){
+                binding.fluentCalled(call);
                 //give decorator opportunity to take over
-                const didDecorate:boolean=this.bindingDecorator.decorateExisting(binding,call);
+                const didDecorate:boolean=this.bindingDecorator.decorateExisting(binding);
                 if(didDecorate){
-                    useUndecoratedBinder=false;
                     this.undecoratedBinder.removeBinding(moduleId,binding);
                 }
             }else{
                 //binding decorator is decorating the binding
                 this.bindingDecorator.fluentCalled(serviceIdentifier, bindingId,call);
-                useUndecoratedBinder=false;
             }
-        }
-        
-        if(useUndecoratedBinder){
+        }else{
             this.undecoratedBinder.fluentCalled(moduleId, bindingId, call);
         }
+        
     }
     getModuleRegistryArguments(moduleId: number, bind: interfaces.Bind, unbind: interfaces.Unbind, isBound: interfaces.IsBound, rebind: interfaces.Rebind, getDecorator?: true): ModuleRegistryArguments {
         const bindMethods:BindMethods={
@@ -81,13 +84,8 @@ export class Decorator implements IDecorator, IModuleFluentProxyCalled {
         }
         return args;
     }
-    private decorated(decoratorModuleId:number,serviceIdentifier: interfaces.ServiceIdentifier<any>, decorator: interfaces.Newable<any>,decoratorBindMethods:BindMethods){
-        const decorableBindings=this.undecoratedBinder.getDecorableBindings(serviceIdentifier);
-        if(decorableBindings.length>0){
-            this.bindingDecorator.decorate(decorableBindings,decoratorModuleId,decorator,decoratorBindMethods);
-        }else{
-            this.bindingDecorator.addDecorator(decoratorModuleId, serviceIdentifier,decorator,decoratorBindMethods);
-        }
+    setLastDecoratorConstructedFirst(lastFirst:boolean){
+        this.bindingDecorator.lastDecoratorConstructedFirst=lastFirst;
     }
     
     unload(moduleIds:number[]) {

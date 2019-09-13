@@ -44,7 +44,7 @@ export class UndecoratedBinder implements IUndecoratedBinder{
     unbind(serviceIdentifier: interfaces.ServiceIdentifier<any>): void {
         const newModuleLookup: Map<number,IUndecoratedModuleBinder> = new Map();
         this.moduleLookup.forEach((binder,moduleId)=>{
-            const remove:boolean=binder.unbind(serviceIdentifier);
+            const remove=binder.unbind(serviceIdentifier);
             if(!remove){
                 newModuleLookup.set(moduleId,binder);
             }

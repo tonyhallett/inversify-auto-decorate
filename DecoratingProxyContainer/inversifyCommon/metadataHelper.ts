@@ -1,10 +1,15 @@
 import { METADATA_KEY, interfaces, decorate, named } from "inversify";
 
-function getInversifyMetadata(newable:interfaces.Newable<any>){
+/*returns Object 
+export interface ReflectResult {
+    [key: string]: Metadata[];
+}
+*/
+export function getReflectInversifyParameterMetadata(newable:interfaces.Newable<any>){
     return Reflect.getMetadata(METADATA_KEY.TAGGED, newable);
 }
-function iterateReflectMetadata(newable:interfaces.Newable<any>,callback:(reflectResult:any,key:string)=>boolean){
-    const reflectResult = getInversifyMetadata(newable);
+function iterateReflectParameterMetadata(newable:interfaces.Newable<any>,callback:(reflectResult:any,key:string)=>boolean){
+    const reflectResult = getReflectInversifyParameterMetadata(newable);
     const reflectKeys = Object.keys(reflectResult);
     for (let i = 0; i < reflectKeys.length; i++) {
         const shouldBreak=callback(reflectResult,reflectKeys[i]);
@@ -12,15 +17,16 @@ function iterateReflectMetadata(newable:interfaces.Newable<any>,callback:(reflec
     }
 }
 function iterateReflectMetadataParameters(newable:interfaces.Newable<any>,callback:(reflectResult:any,key:string,parameterIndex:number)=>boolean){
-    iterateReflectMetadata(newable,(reflectResult,key)=>{
+    iterateReflectParameterMetadata(newable,(reflectResult,key)=>{
         const paramIndexOrProperty = Number.parseInt(key);
+        //if path always taken as is parameter metadata !
         if (!isNaN(paramIndexOrProperty)) {
-            return callback(reflectResult,key,paramIndexOrProperty)
+            return callback(reflectResult,key,paramIndexOrProperty)//return is shouldBreak
         }
         return false;
     })
 }
-function iterateReflectMetadataParameterMetadatas(newable:interfaces.Newable<any>,callback:(metadatas:interfaces.Metadata[],parameterIndex:number)=>boolean){
+export function iterateReflectMetadataParameterMetadatas(newable:interfaces.Newable<any>,callback:(metadatas:interfaces.Metadata[],parameterIndex:number)=>boolean){
     iterateReflectMetadataParameters(newable,(reflectResult,key,parameterIndex)=>{
         const metadatas = reflectResult[key] as interfaces.Metadata[];
         return callback(metadatas,parameterIndex);

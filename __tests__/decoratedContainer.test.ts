@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { injectable, inject, named, interfaces, ContainerModule } from 'inversify'
 import { createDecoratingModuleContainer } from "../DecoratingProxyContainer/container_modules/container";
 import { OneShotDecoratingContainerModule } from "../DecoratingProxyContainer/container_modules/DecoratingContainerModule";
+import { isUndefined } from "util";
 describe('Decorating Container using Proxy', () => {
     beforeEach(()=>{
         FileStream.instanceId=0;
@@ -25,14 +26,14 @@ describe('Decorating Container using Proxy', () => {
     }
     @injectable()
     class WithFileStream{
-        constructor(@inject("IStream") @named("File") private stream:IStream){}
+        constructor(@inject("IStream") @named("File") public stream:IStream){}
         readStream(){
             return this.stream.read();
         }
     }
     @injectable()
     class WithMemoryStream{
-        constructor(@inject("IStream") @named("Memory") private stream:IStream){}
+        constructor(@inject("IStream") @named("Memory") public stream:IStream){}
         readStream(){
             return this.stream.read();
         }
@@ -92,6 +93,16 @@ describe('Decorating Container using Proxy', () => {
         read(){
             return `StreamWithArgument[${this.arg}](${this.baseStream.read()})`;
         }
+    }
+    @injectable()
+    class StreamWithArgumentAndPropertyInjection implements IStream{
+        constructor(@inject("IStream") private baseStream: IStream, @inject("arg") private arg:string) {  }
+        read(){
+            return `StreamWithArgument[${this.arg}]WithProperty[${this.someProp}](${this.baseStream.read()})`;
+        }
+
+        @inject("SomeProp")
+        private someProp!:number
     }
     //#endregion
     //#endregion
@@ -248,7 +259,7 @@ describe('Decorating Container using Proxy', () => {
     })
     describe("decoration",()=>{
         describe("single decorator", ()=>{
-            it("Should decorate in single load", ()=>{
+            it("should permit additional decorator parameter injections", ()=>{
                 const decoratingContainerModule = createDecoratingModuleContainer();
                 const bindModule=new ContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
@@ -260,7 +271,9 @@ describe('Decorating Container using Proxy', () => {
                 decoratingContainerModule.load(bindModule,decorateModule);
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg](FileStream)");
             })
-            it("Should decorate in single load decorator different index", ()=>{
+
+            
+            it("should permit additional decorator parameter injections - different parameter order", ()=>{
                 const decoratingContainerModule = createDecoratingModuleContainer();
                 const bindModule=new ContainerModule((bind)=>{
                     bind("IStream").to(FileStream);
@@ -271,6 +284,19 @@ describe('Decorating Container using Proxy', () => {
                 })
                 decoratingContainerModule.load(bindModule,decorateModule);
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg](FileStream)");
+            })
+            it("should permit decorator property injection",()=>{
+                const decoratingContainerModule = createDecoratingModuleContainer();
+                const bindModule=new ContainerModule((bind)=>{
+                    bind("IStream").to(FileStream);
+                })
+                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                    bind("arg").toConstantValue("The Arg");
+                    bind("SomeProp").toConstantValue(123);
+                    d("IStream", StreamWithArgumentAndPropertyInjection);
+                })
+                decoratingContainerModule.load(bindModule,decorateModule);
+                expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg]WithProperty[123](FileStream)");
             })
             it("should decorate in 2 loads", ()=>{
                 const decoratingContainerModule = createDecoratingModuleContainer();
@@ -337,6 +363,24 @@ describe('Decorating Container using Proxy', () => {
                 
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg](Encrypted(FileStream))")
             })
+            it("should return resolved singleton - no affect loading additional decorator after resolve", ()=>{
+                const decoratingContainerModule = createDecoratingModuleContainer(false);
+                const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                    bind("IStream").to(FileStream).inSingletonScope();
+                })
+                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                    bind("arg").toConstantValue("The Arg")
+                    d("IStream", StreamWithArgument);
+                })
+                const decorateModule2=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                    d("IStream", EncryptedStream);
+                })
+                decoratingContainerModule.load(bindModule,decorateModule);
+                expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg](FileStream)")
+                decoratingContainerModule.load(decorateModule2);
+                
+                expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("StreamWithArgument[The Arg](FileStream)")
+            })
         })
         
         describe("decorating multiple roots", ()=>{
@@ -377,202 +421,259 @@ describe('Decorating Container using Proxy', () => {
             })
         })
         
-        describe("unloading decorators", ()=>{
-            it("Should support unloading all decorators", () => {
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                const bindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind(WithFileStream).toSelf();
-                    bind(WithMemoryStream).toSelf();
-                    bind("IStream").to(FileStream).whenTargetNamed("File");
-                    bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
+        describe("unloading/unbinding",()=>{
+            describe("unloading decorators", ()=>{
+                it("Should support unloading all decorators", () => {
+                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                        bind(WithFileStream).toSelf();
+                        bind(WithMemoryStream).toSelf();
+                        bind("IStream").to(FileStream).inSingletonScope().whenTargetNamed("File");
+                        bind("IStream").to(MemoryStream).inTransientScope().whenTargetNamed("Memory");
+                    })
+                    const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        bind("arg").toConstantValue("The Arg")
+                        d("IStream", StreamWithArgument);
+                    })
+                    
+                    decoratingContainerModule.load(bindModule);
+                    decoratingContainerModule.load(decorateModule);
+
+                    decoratingContainerModule.get<WithFileStream>(WithFileStream);
+                    decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream);
+
+                    decoratingContainerModule.unload(decorateModule);
+                    expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("FileStream")
+                    expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("MemoryStream")
                 })
-                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    bind("arg").toConstantValue("The Arg")
-                    d("IStream", StreamWithArgument);
+                it("Should support unloading all decorators and reloading - SINGLETON RETAINED", () => {
+                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                        bind(WithFileStream).toSelf();
+                        bind(WithMemoryStream).toSelf();
+                        bind("IStream").to(FileStream).inSingletonScope().whenTargetNamed("File");
+                        bind("IStream").to(MemoryStream).inTransientScope().whenTargetNamed("Memory");
+                    })
+                    const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        bind("arg").toConstantValue("The Arg")
+                        d("IStream", StreamWithArgument);
+                    })
+                    
+                    decoratingContainerModule.load(bindModule);
+                    decoratingContainerModule.load(decorateModule);
+
+                    const decoratedSingletonFileStream = decoratingContainerModule.get<WithFileStream>(WithFileStream).stream;
+                    const decoratedSingletonFileStream2 = decoratingContainerModule.get<WithFileStream>(WithFileStream).stream;
+                    expect(decoratedSingletonFileStream).toBe(decoratedSingletonFileStream2);
+
+                    const decoratedMemoryStream = decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).stream;
+                    const decoratedMemoryStream2 = decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).stream;
+                    expect(decoratedMemoryStream).not.toBe(decoratedMemoryStream2);
+
+                    decoratingContainerModule.unload(decorateModule);
+                    decoratingContainerModule.load(decorateModule);
+                    
+                    const reloadDecoratedSingletonFileStream = decoratingContainerModule.get<WithFileStream>(WithFileStream).stream;
+                    expect(reloadDecoratedSingletonFileStream).toBe(decoratedSingletonFileStream);
                 })
-                
-                decoratingContainerModule.load(bindModule);
-                decoratingContainerModule.load(decorateModule);
-                decoratingContainerModule.unload(decorateModule);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("FileStream")
-                expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("MemoryStream")
+                it("Should support unloading one decorator - SINGLETON DECORATOR RETAINED", () => {
+                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                        bind(WithFileStream).toSelf();
+                        bind(WithMemoryStream).toSelf();
+                        bind("IStream").to(FileStream).inSingletonScope().whenTargetNamed("File")
+                        bind("IStream").to(MemoryStream).inTransientScope().whenTargetNamed("Memory");
+                    })
+                    const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        d("IStream",EncryptedStream);
+                    })
+                    const decorateModule2=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        d("IStream",CompressedStream);
+                    })
+                    
+                    decoratingContainerModule.load(bindModule,decorateModule,decorateModule2);
+                    expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(Encrypted(FileStream))");
+                    expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(Encrypted(MemoryStream))");
+                    decoratingContainerModule.unload(decorateModule);
+                    //singleton returned
+                    expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(Encrypted(FileStream))");
+                    expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(MemoryStream)");
+                });
+                it("Should support unloading one decorator and reloading", () => {
+                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                        bind(WithFileStream).toSelf();
+                        bind(WithMemoryStream).toSelf();
+                        bind("IStream").to(FileStream).inSingletonScope().whenTargetNamed("File");
+                        bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
+                    })
+                    const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        d("IStream",EncryptedStream);
+                    })
+                    const decorateModule2=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        d("IStream",CompressedStream);
+                    })
+                    const decorateModule3=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        bind("arg").toConstantValue("The Arg")
+                        d("IStream", StreamWithArgument);
+                    })
+                    
+                    decoratingContainerModule.load(bindModule,decorateModule,decorateModule2);
+                    expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(Encrypted(FileStream))");
+                    expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(Encrypted(MemoryStream))");
+                    decoratingContainerModule.unload(decorateModule);
+                    //unload does not affect resolved singleton
+                    expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(Encrypted(FileStream))");
+                    expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(MemoryStream)");
+                    decoratingContainerModule.load(decorateModule3);
+                    //load does not affect resolved singleton
+                    expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(Encrypted(FileStream))");
+                    expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("StreamWithArgument[The Arg](Compressed(MemoryStream))");
+                });
             })
-            it("Should support unloading all decorators and reloading", () => {
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                const bindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind(WithFileStream).toSelf();
-                    bind(WithMemoryStream).toSelf();
-                    bind("IStream").to(FileStream).whenTargetNamed("File");
-                    bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
+            describe("unloading the bind module",()=>{
+                it("should throw if try to get after as normal",()=>{
+                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    const keepBindModule=new OneShotDecoratingContainerModule((bind)=>{
+                        bind(WithFileStream).toSelf();
+                        bind(WithMemoryStream).toSelf();
+                        bind("IStream").to(FileStream).whenTargetNamed("File");
+                    })
+                    const unloadBindModule=new OneShotDecoratingContainerModule((bind)=>{
+                        bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
+                    })
+                    const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        bind("arg").toConstantValue("The Arg")
+                        d("IStream", StreamWithArgument);
+                    })
+                    
+                    decoratingContainerModule.load(unloadBindModule,keepBindModule,decorateModule);
+                    expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("StreamWithArgument[The Arg](FileStream)");
+                    expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("StreamWithArgument[The Arg](MemoryStream)");
+                    decoratingContainerModule.unload(unloadBindModule);
+                    expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("StreamWithArgument[The Arg](FileStream)");
+                    expectNoMatchingBindings(()=>decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream));
                 })
-                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    bind("arg").toConstantValue("The Arg")
-                    d("IStream", StreamWithArgument);
+                it("should be possible to unload and load another bind module to apply decorators to",()=>{
+                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    
+                    const keepBindModule = new OneShotDecoratingContainerModule((bind)=>{
+                        bind(WithStream).toSelf();
+                    })
+                    const unloadBindModule=new OneShotDecoratingContainerModule((bind)=>{
+                        bind("IStream").to(MemoryStream);
+                    })
+                    const loadBindModule=new OneShotDecoratingContainerModule((bind)=>{
+                        bind("IStream").to(FileStream);
+                    })
+                    const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        d("IStream", CompressedStream);
+                    })
+                    decoratingContainerModule.load(keepBindModule,unloadBindModule,decorateModule);
+                    expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(MemoryStream)")
+                    decoratingContainerModule.unload(unloadBindModule);
+                    decoratingContainerModule.load(loadBindModule);
+                    expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(FileStream)")
                 })
-                
-                decoratingContainerModule.load(bindModule);
-                decoratingContainerModule.load(decorateModule);
-                decoratingContainerModule.unload(decorateModule);
-                decoratingContainerModule.load(decorateModule);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("StreamWithArgument[The Arg](FileStream)");
-                expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("StreamWithArgument[The Arg](MemoryStream)");
+                it("should be possible to unload and reload the same module",()=>{
+                    const decoratingContainerModule = createDecoratingModuleContainer();
+                    
+                    const bindAndDecorate = new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                        bind(WithStream).toSelf();
+                        bind("IStream").to(MemoryStream);
+                        d("IStream", CompressedStream);
+                    })
+                    
+                    decoratingContainerModule.load(bindAndDecorate);
+                    expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(MemoryStream)")
+                    decoratingContainerModule.unload(bindAndDecorate);
+                    decoratingContainerModule.load(bindAndDecorate);
+                    expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(MemoryStream)")
+                })
+            })
+            describe("unbind/rebind", ()=>{
+                describe("unbind",()=>{
+                    it("should unbind service identifier and keep decorators",()=>{
+                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
+                            bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
+                            bind("IStream").to(FileStream).whenTargetNamed("File");
+                        })
+                        const decoratorModule = new OneShotDecoratingContainerModule((bind,u,i,r,decorate,decorateCount)=>{
+                            decorate("IStream",CompressedStream)
+                        })
+                        
+                        decoratingContainerModule.load(unbindModule,decoratorModule);
+                        unbindModule.unbind("IStream");
+                        expect(decoratorModule.decoratedCount("IStream")).toEqual(1);
+                        expect(decoratorModule.decoratedCount("IStream",true)).toEqual(0);
+                        expectNoMatchingBindings(()=>decoratingContainerModule.getNamed("IStream","File"));
+                        expectNoMatchingBindings(()=>decoratingContainerModule.getNamed("IStream","Memory"));
+                    })
+                    it("should unbind and re bind successfully",()=>{
+                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
+                            bind("IStream").to(MemoryStream)
+                        })
+                        const decoratorModule = new OneShotDecoratingContainerModule((bind,u,i,r,decorate,decorateCount)=>{
+                            decorate("IStream",CompressedStream)
+                        })
+                        
+                        decoratingContainerModule.load(unbindModule,decoratorModule);
+                        unbindModule.unbind("IStream");
+                        unbindModule.bind("IStream").to(FileStream);
+                        expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Compressed(FileStream)");
+                    })
+                    it("should unbind and re bind successfully 2",()=>{
+                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
+                            bind("IStream").to(MemoryStream)
+                        })
+                        const decoratorModule = new OneShotDecoratingContainerModule((bind,u,i,r,decorate,decorateCount)=>{
+                            decorate("IStream",CompressedStream)
+                        })
+                        
+                        decoratingContainerModule.load(unbindModule,decoratorModule);
+                        decoratingContainerModule.unload(decoratorModule);
+                        unbindModule.unbind("IStream");
+                        decoratingContainerModule.load(decoratorModule);
+                        unbindModule.bind("IStream").to(FileStream);
+                        expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Compressed(FileStream)");
+                    })
+                    it("should unbind and not affect other bindings", () => {
+                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
+                            bind("IKeepStream").to(FileStream);
+                            bind("IStream").to(MemoryStream);
+                        });
+                        const decoratorModule = new OneShotDecoratingContainerModule((bind,u,i,r,decorate,decorateCount)=>{
+                            decorate("IStream",CompressedStream);
+                        });
+                        
+                        decoratingContainerModule.load(unbindModule,decoratorModule);
+                        unbindModule.unbind("IStream");
+                        expect(decoratingContainerModule.get("IKeepStream")).toBeInstanceOf(FileStream);
+                    })
+                })
+                it("should rebind successfully",()=>{
+                    const decoratingContainerModule = createDecoratingModuleContainer();
+                        const rebindModule=new OneShotDecoratingContainerModule((bind)=>{
+                            bind("IStream").to(MemoryStream)
+                        })
+                        const decoratorModule = new OneShotDecoratingContainerModule((bind,u,i,r,decorate,decorateCount)=>{
+                            decorate("IStream",CompressedStream)
+                        })
+                        
+                        decoratingContainerModule.load(rebindModule,decoratorModule);
+                        rebindModule.rebind("IStream").to(FileStream);
+                        expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Compressed(FileStream)");
+                })
+            })
+            
+        })
         
-            })
-            it("Should support unloading one decorator", () => {
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                const bindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind(WithFileStream).toSelf();
-                    bind(WithMemoryStream).toSelf();
-                    bind("IStream").to(FileStream).whenTargetNamed("File");
-                    bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
-                })
-                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    d("IStream",EncryptedStream);
-                })
-                const decorateModule2=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    d("IStream",CompressedStream);
-                })
-                
-                decoratingContainerModule.load(bindModule,decorateModule,decorateModule2);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(Encrypted(FileStream))");
-                expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(Encrypted(MemoryStream))");
-                decoratingContainerModule.unload(decorateModule);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(FileStream)");
-                expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(MemoryStream)");
-            });
-            it("Should support unloading one decorator and reloading", () => {
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                const bindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind(WithFileStream).toSelf();
-                    bind(WithMemoryStream).toSelf();
-                    bind("IStream").to(FileStream).whenTargetNamed("File");
-                    bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
-                })
-                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    d("IStream",EncryptedStream);
-                })
-                const decorateModule2=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    d("IStream",CompressedStream);
-                })
-                
-                decoratingContainerModule.load(bindModule,decorateModule,decorateModule2);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(Encrypted(FileStream))");
-                expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(Encrypted(MemoryStream))");
-                decoratingContainerModule.unload(decorateModule);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Compressed(FileStream)");
-                expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Compressed(MemoryStream)");
-                decoratingContainerModule.load(decorateModule);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("Encrypted(Compressed(FileStream))");
-                expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("Encrypted(Compressed(MemoryStream))");
-            });
-        })
-        describe("unloading the bind module",()=>{
-            it("should throw if try to get after as normal",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                const keepBindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind(WithFileStream).toSelf();
-                    bind(WithMemoryStream).toSelf();
-                    bind("IStream").to(FileStream).whenTargetNamed("File");
-                })
-                const unloadBindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
-                })
-                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    bind("arg").toConstantValue("The Arg")
-                    d("IStream", StreamWithArgument);
-                })
-                
-                decoratingContainerModule.load(unloadBindModule,keepBindModule,decorateModule);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("StreamWithArgument[The Arg](FileStream)");
-                expect(decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream).readStream()).toEqual("StreamWithArgument[The Arg](MemoryStream)");
-                decoratingContainerModule.unload(unloadBindModule);
-                expect(decoratingContainerModule.get<WithFileStream>(WithFileStream).readStream()).toEqual("StreamWithArgument[The Arg](FileStream)");
-                expectNoMatchingBindings(()=>decoratingContainerModule.get<WithMemoryStream>(WithMemoryStream));
-            })
-            it("should be possible to unload and load another bind module to apply decorators to",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                
-                const keepBindModule = new OneShotDecoratingContainerModule((bind)=>{
-                    bind(WithStream).toSelf();
-                })
-                const unloadBindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind("IStream").to(MemoryStream);
-                })
-                const loadBindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind("IStream").to(FileStream);
-                })
-                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    d("IStream", CompressedStream);
-                })
-                decoratingContainerModule.load(keepBindModule,unloadBindModule,decorateModule);
-                expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(MemoryStream)")
-                decoratingContainerModule.unload(unloadBindModule);
-                decoratingContainerModule.load(loadBindModule);
-                expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(FileStream)")
-            })
-            it("should be possible to unload and reload the same module",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                
-                const bindAndDecorate = new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    bind(WithStream).toSelf();
-                    bind("IStream").to(MemoryStream);
-                    d("IStream", CompressedStream);
-                })
-                
-                decoratingContainerModule.load(bindAndDecorate);
-                expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(MemoryStream)")
-                decoratingContainerModule.unload(bindAndDecorate);
-                decoratingContainerModule.load(bindAndDecorate);
-                expect(decoratingContainerModule.get<WithStream>(WithStream).readStream()).toEqual("Compressed(MemoryStream)")
-            })
-        })
-        describe("unbind",()=>{
-            it("should unbind service identifier and keep decorators",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind("IStream").to(MemoryStream).whenTargetNamed("Memory");
-                    bind("IStream").to(FileStream).whenTargetNamed("File");
-                })
-                const decoratorModule = new OneShotDecoratingContainerModule((bind,u,i,r,decorate,decorateCount)=>{
-                    decorate("IStream",CompressedStream)
-                })
-                
-                decoratingContainerModule.load(unbindModule,decoratorModule);
-                unbindModule.unbind("IStream");
-                expect(decoratorModule.decoratedCount("IStream")).toEqual(1);
-                expect(decoratorModule.decoratedCount("IStream",true)).toEqual(0);
-                expectNoMatchingBindings(()=>decoratingContainerModule.getNamed("IStream","File"));
-                expectNoMatchingBindings(()=>decoratingContainerModule.getNamed("IStream","Memory"));
-            })
-            it("should unbind and re bind successfully",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                const unbindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind("IStream").to(MemoryStream)
-                })
-                const decoratorModule = new OneShotDecoratingContainerModule((bind,u,i,r,decorate,decorateCount)=>{
-                    decorate("IStream",CompressedStream)
-                })
-                
-                decoratingContainerModule.load(unbindModule,decoratorModule);
-                unbindModule.unbind("IStream");
-                unbindModule.bind("IStream").to(FileStream);
-                expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Compressed(FileStream)");
-            })
-        })
-        it("should rebind successfully",()=>{
-            const decoratingContainerModule = createDecoratingModuleContainer();
-                const rebindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    bind("IStream").to(MemoryStream)
-                })
-                const decoratorModule = new OneShotDecoratingContainerModule((bind,u,i,r,decorate,decorateCount)=>{
-                    decorate("IStream",CompressedStream)
-                })
-                
-                decoratingContainerModule.load(rebindModule,decoratorModule);
-                rebindModule.rebind("IStream").to(FileStream);
-                expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Compressed(FileStream)");
-        })
         describe("respecting normal behaviour", ()=>{
+            //may decide to have container option so that applied to decorator instead
             it("Should support onActivation when decorated", ()=>{
                 const decoratingContainerModule = createDecoratingModuleContainer();
                 let onActivationCalled = false;
@@ -602,7 +703,7 @@ describe('Decorating Container using Proxy', () => {
                 expect(bindModule.isBound("IStream")).toEqual(true);
             })
             describe("scope", ()=>{
-                it.skip("Should respect request scope on the root", ()=>{
+                it("Should respect request scope on the root", ()=>{
                     const decoratingContainerModule = createDecoratingModuleContainer();
                     const bindModule=new OneShotDecoratingContainerModule((bind)=>{
                         bind("IStream").to(FileStream).inRequestScope();
@@ -660,6 +761,7 @@ describe('Decorating Container using Proxy', () => {
             
                     expect(onSingletonActivationCount).toBe(1);
                 })
+                  
                 it("should respect transient scope on the root", ()=>{
                     const decoratingContainerModule = createDecoratingModuleContainer();
                     let onTransientActivationCount=0;
@@ -677,6 +779,50 @@ describe('Decorating Container using Proxy', () => {
                     decoratingContainerModule.get("IStream");
             
                     expect(onTransientActivationCount).toBe(2);
+                })
+                describe("decorator scope", ()=>{
+                    it("should work with singleton scope",()=>{
+                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                            bind("IStream").to(FileStream).inSingletonScope();
+                        })
+                        const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                            bind("arg").toConstantValue("The Arg")
+                            d("IStream", StreamWithArgument);
+                        })
+                        decoratingContainerModule.load(bindModule,decorateModule);
+                        expect(decoratingContainerModule.get("IStream")).toBe(decoratingContainerModule.get("IStream"));
+                    })
+
+                    it("should work with transient scope",()=>{
+                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                            bind("IStream").to(FileStream).inTransientScope();
+                        })
+                        const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                            bind("arg").toConstantValue("The Arg")
+                            d("IStream", StreamWithArgument);
+                        })
+                        decoratingContainerModule.load(bindModule,decorateModule);
+                        expect(decoratingContainerModule.get("IStream")).not.toBe(decoratingContainerModule.get("IStream"));
+                    })
+                    it("should work with request scope",()=>{
+                        const decoratingContainerModule = createDecoratingModuleContainer();
+                        const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                            bind("IStream").to(FileStream).inRequestScope();
+                            bind(RequestScopeWithStream).toSelf();
+                            bind(WithStream).toSelf();
+                        })
+                        const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                            d("IStream", EncryptedStream);
+                        })
+                        decoratingContainerModule.load(bindModule,decorateModule);
+                        const requestScopeWithStream=decoratingContainerModule.get<RequestScopeWithStream>(RequestScopeWithStream);
+                        const requestScopeDecoratorStream=(requestScopeWithStream.stream as EncryptedStream);
+                        
+                        const requestScopeDecoratorStream2=(requestScopeWithStream.withStream.stream as EncryptedStream);
+                        expect(requestScopeDecoratorStream).toBe(requestScopeDecoratorStream2);
+                    })
                 })
             })
         })
@@ -729,23 +875,6 @@ describe('Decorating Container using Proxy', () => {
                 to.to(MemoryStream);
                 expect(decoratingContainerModule.get<IStream>("IStream").read()).toEqual("Encrypted(MemoryStream)");
             })
-            it("should work when when is changed",()=>{
-                const decoratingContainerModule = createDecoratingModuleContainer();
-                let when!:interfaces.BindingWhenSyntax<any>
-                const bindModule=new OneShotDecoratingContainerModule((bind)=>{
-                    when=bind("IStream").to(FileStream);
-                    when.whenTargetNamed("File");
-                    bind(WithFileStream).toSelf();
-                    bind(WithMemoryStream).toSelf();
-                })
-                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
-                    d("IStream", EncryptedStream);
-                })
-                decoratingContainerModule.load(bindModule,decorateModule);
-                expect(decoratingContainerModule.get(WithFileStream).readStream()).toEqual("Encrypted(FileStream)");
-                when.whenTargetNamed("Memory");
-                expect(decoratingContainerModule.get(WithMemoryStream).readStream()).toEqual("Encrypted(FileStream)");
-            })
             it("should work when onActivation is changed", ()=>{
                 const decoratingContainerModule = createDecoratingModuleContainer();
                 let on!:interfaces.BindingOnSyntax<any>
@@ -768,6 +897,23 @@ describe('Decorating Container using Proxy', () => {
                 decoratingContainerModule.get("IStream");
                 expect(originalOnActivationCalled).toEqual(true);
                 expect(newOnActivationCalled).toEqual(true);
+            })
+            it("should work when when is changed",()=>{
+                const decoratingContainerModule = createDecoratingModuleContainer();
+                let when!:interfaces.BindingWhenSyntax<any>
+                const bindModule=new OneShotDecoratingContainerModule((bind)=>{
+                    when=bind("IStream").to(FileStream);
+                    when.whenTargetNamed("File");
+                    bind(WithFileStream).toSelf();
+                    bind(WithMemoryStream).toSelf();
+                })
+                const decorateModule=new OneShotDecoratingContainerModule((bind, u,i,r,d)=>{
+                    d("IStream", EncryptedStream);
+                })
+                decoratingContainerModule.load(bindModule,decorateModule);
+                expect(decoratingContainerModule.get(WithFileStream).readStream()).toEqual("Encrypted(FileStream)");
+                when.whenTargetNamed("Memory");
+                expect(decoratingContainerModule.get(WithMemoryStream).readStream()).toEqual("Encrypted(FileStream)");
             })
             it("should work when scope is changed", ()=>{
                 const decoratingContainerModule = createDecoratingModuleContainer();
@@ -793,5 +939,4 @@ describe('Decorating Container using Proxy', () => {
         })
     })
     
-    //unloading root
 });

@@ -4,17 +4,19 @@ import { IFluentCall } from "./IFluentCall";
 import { FluentStage } from "../../fluent_proxies/FluentStage";
 import { BindMethods } from "../BindMethods";
 import { BindingCalls } from "./BindingCalls";
-import { SyntaxLastCall, ISyntaxLastCall, SyntaxLastCallType, IFluentSyntaxCall } from "./SyntaxLastCall";
+import { SyntaxLastCall, ISyntaxLastCall, SyntaxLastCallType, SyntaxLastCallInterceptor } from "./SyntaxLastCall";
 import { getAllFuncs } from "../../javascriptHelpers";
 
 export interface IProxyBinding{
-    interceptWhen(interceptor: (whenCall: IFluentSyntaxCall<"when">) => void):void
+    interceptWhen(interceptor:SyntaxLastCallInterceptor<"when">):void;
+    interceptIn(interceptor:SyntaxLastCallInterceptor<"in">):void
     serviceIdentifier:interfaces.ServiceIdentifier<any>
     bindingId:number,
     moduleId:number,
     bindingCalls:IBindingCalls,
     bindMethods:BindMethods,
     whenSyntaxLastCall: ISyntaxLastCall<'when'> | undefined;
+    inSyntaxLastCall: ISyntaxLastCall<'in'> | undefined;
     fluentCalled(call:IFluentCall<any>): void
     
 }
@@ -27,7 +29,8 @@ export class ProxyBinding implements IProxyBinding {
     public inSyntaxLastCall: ISyntaxLastCall<'in'> | undefined;
     public whenSyntaxLastCall: ISyntaxLastCall<'when'> | undefined;
     public onSyntaxLastCall: ISyntaxLastCall<'on'> | undefined;
-    private whenInterceptor:((whenCall: IFluentSyntaxCall<"when">) => void)|undefined;
+    private whenInterceptor:SyntaxLastCallInterceptor<"when">|undefined;
+    private inInterceptor:SyntaxLastCallInterceptor<"in">|undefined;
     constructor(public moduleId: number, public bindingId: number, args: any[], public bindMethods: BindMethods) {
         this.serviceIdentifier = args[0];
         this.toSyntaxLastCall = new SyntaxLastCall('to', bindMethods.bind(this.serviceIdentifier));
@@ -57,11 +60,18 @@ export class ProxyBinding implements IProxyBinding {
         return this.isFluentStageMatch(fluentStage,"on");
     }
     //#endregion
-    interceptWhen(interceptor: (whenCall: IFluentSyntaxCall<"when">) => void):void{
+    interceptWhen(interceptor: SyntaxLastCallInterceptor<"when">):void{
         if (this.whenSyntaxLastCall) {
             this.whenSyntaxLastCall.intercept(interceptor);
         }else{
             this.whenInterceptor=interceptor;
+        }
+    }
+    interceptIn(interceptor: SyntaxLastCallInterceptor<"in">):void{
+        if (this.inSyntaxLastCall) {
+            this.inSyntaxLastCall.intercept(interceptor);
+        }else{
+            this.inInterceptor=interceptor;
         }
     }
     fluentCalled(call: IFluentCall<any>): void {
@@ -79,6 +89,9 @@ export class ProxyBinding implements IProxyBinding {
                             /* istanbul ignore else */
                             if (this.inSyntaxLastCall === undefined) {
                                 this.inSyntaxLastCall = new SyntaxLastCall("in", nextFluentStage);
+                                if(this.inInterceptor){
+                                    this.inSyntaxLastCall.intercept(this.inInterceptor);
+                                }
                             }
                         }
                         if (this.isWhen(nextFluentStage)) {

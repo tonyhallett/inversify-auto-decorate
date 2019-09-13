@@ -49,7 +49,7 @@ export class UndecoratedModuleBinder implements IUndecoratedModuleBinder {
     }
     unbind(serviceIdentifier: interfaces.ServiceIdentifier<any>):boolean {
         this.bindings = this.bindings.filter(b => {
-            b.serviceIdentifier !== serviceIdentifier;
+            return b.serviceIdentifier !== serviceIdentifier;
         });
         return this.bindings.length===0;
     }
