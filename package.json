@@ -1,5 +1,5 @@
 {
-  "name": "inversify_auto_decorate",
+  "name": "inversify-auto-decorate",
   "version": "1.0.0",
   "description": "Auto decorate by service identifier",
   "main": "index.js",
